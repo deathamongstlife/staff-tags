@@ -1,41 +1,81 @@
-import { findByName, findByStoreName } from "@vendetta/metro";
-import { before } from "@vendetta/patcher";
-import getTag from "../lib/getTag";
+import { findByTypeNameAll, findByStoreName } from "@vendetta/metro";
+import { after } from "@vendetta/patcher";
+import { findInReactTree } from "@vendetta/utils";
+import { General } from "@vendetta/ui/components";
+import getTag, { BUILT_IN_TAGS } from "../lib/getTag";
+import { findByProps } from "@vendetta/metro";
 
-const RowManager = findByName("RowManager");
+const { View } = General;
+const TagModule = findByProps("getBotLabel");
+const getBotLabel = TagModule?.getBotLabel;
 const GuildStore = findByStoreName("GuildStore");
 
 export default () => {
-    if (!RowManager) {
-        return () => {};
-    }
+    const patches = [];
 
-    return before("generate", RowManager.prototype, ([data]) => {
+    // Patch member list using the same approach as the platform indicators plugin
+    const rowPatch = ([{ user, guildId }], ret) => {
         try {
-            // Check if this is a member list row with user data
-            if (data?.message?.author || data?.user) {
-                const user = data.message?.author || data.user;
-                const guildId = data.guildId || data.message?.guild_id;
-                
-                if (user && guildId) {
-                    const guild = GuildStore?.getGuild?.(guildId);
-                    const tag = getTag(guild, null, user);
-                    
-                    if (tag) {
-                        // Modify the data before it gets rendered
-                        if (data.text) {
-                            data.text = data.text + ` ${tag.text}`;
-                        }
-                        
-                        // Try to add role styling
-                        if (tag.backgroundColor && data.roleStyle !== undefined) {
-                            data.roleStyle = tag.backgroundColor;
-                        }
-                    }
+            if (!ret || !user || !guildId) return ret;
+            
+            const guild = GuildStore?.getGuild?.(guildId);
+            const tag = getTag(guild, null, user);
+
+            if (tag && TagModule?.default) {
+                // Check if we already added a tag to avoid duplicates
+                const existingTag = findInReactTree(ret?.props?.label, (c) => c.key == "StaffTagsView");
+                if (!existingTag) {
+                    // Use space-between to push tag between name and status icons
+                    ret.props.label = (
+                        <View style={{
+                            justifyContent: "space-between", // This pushes items apart
+                            flexDirection: "row", 
+                            alignItems: "center",
+                            flex: 1 // Take full width
+                        }}
+                        key="StaffTagsView">
+                            <View style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                flex: 1 // Take available space
+                            }}>
+                                {ret.props.label}
+                                <View key="StaffTagsMemberList" style={{
+                                    flexDirection: 'row',
+                                    marginLeft: 4
+                                }}>
+                                    <TagModule.default
+                                        type={0}
+                                        text={tag.text}
+                                        textColor={tag.textColor}
+                                        backgroundColor={tag.backgroundColor}
+                                        verified={tag.verified}
+                                    />
+                                </View>
+                            </View>
+                        </View>
+                    );
                 }
             }
         } catch (error) {
             // Silent
         }
-    });
+        
+        return ret;
+    };
+
+    // Patch all UserRow components (same as platform indicators plugin)
+    findByTypeNameAll("UserRow").forEach((UserRow) => 
+        patches.push(after("type", UserRow, rowPatch))
+    );
+
+    return () => {
+        patches.forEach(unpatch => {
+            try {
+                unpatch?.();
+            } catch (error) {
+                // Silent
+            }
+        });
+    };
 };
