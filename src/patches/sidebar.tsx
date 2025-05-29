@@ -25,34 +25,27 @@ export default () => {
                 // Check if we already added a tag to avoid duplicates
                 const existingTag = findInReactTree(ret?.props?.label, (c) => c.key == "StaffTagsView");
                 if (!existingTag) {
-                    // Use space-between to push tag between name and status icons
+                    // Use flex-start to keep everything aligned left, but add the tag inline
                     ret.props.label = (
                         <View style={{
-                            justifyContent: "space-between", // This pushes items apart
+                            justifyContent: "flex-start", // Keep left alignment
                             flexDirection: "row", 
                             alignItems: "center",
-                            flex: 1 // Take full width
+                            flexWrap: "wrap" // Allow wrapping if needed
                         }}
                         key="StaffTagsView">
-                            <View style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                flex: 1 // Take available space
-                            }}>
-                                {ret.props.label}
-                                <View key="StaffTagsMemberList" style={{
-                                    flexDirection: 'row',
-                                    marginLeft: 4
-                                }}>
-                                    <TagModule.default
-                                        type={0}
-                                        text={tag.text}
-                                        textColor={tag.textColor}
-                                        backgroundColor={tag.backgroundColor}
-                                        verified={tag.verified}
-                                    />
-                                </View>
-                            </View>
+                            {ret.props.label}
+                            <TagModule.default
+                                type={0}
+                                text={tag.text}
+                                textColor={tag.textColor}
+                                backgroundColor={tag.backgroundColor}
+                                verified={tag.verified}
+                                style={{ 
+                                    marginLeft: 6,
+                                    marginRight: 4
+                                }}
+                            />
                         </View>
                     );
                 }
