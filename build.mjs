@@ -10,7 +10,7 @@ import swc from "@swc/core";
 
 const extensions = [".js", ".jsx", ".mjs", ".ts", ".tsx", ".cts", ".mts"];
 
-/** @type import("rollup").InputPluginOption */
+/** @type {import("rollup").InputPluginOption} */
 const plugins = [
     nodeResolve(),
     commonjs(),
@@ -51,7 +51,7 @@ const outPath = `./dist/index.js`;
 try {
     const bundle = await rollup({
         input: `./${manifest.main}`,
-        onwarn: () => { },
+        onwarn: () => {},
         plugins,
     });
 
@@ -81,4 +81,4 @@ try {
 } catch (e) {
     console.error("Failed to build plugin...", e);
     process.exit(1);
-}
+} 
