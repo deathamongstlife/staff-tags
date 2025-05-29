@@ -9,39 +9,46 @@ const getBotLabel = TagModule.getBotLabel;
 const GuildStore = findByStoreName("GuildStore");
 
 const rowPatch = ([{ guildId, user }], ret) => {
-    console.log(ret)
-    const tagComponent = findInReactTree(ret.props.label, (c) => c.type.Types)
+    if (!ret?.props?.label) return ret;
+    
+    const tagComponent = findInReactTree(ret.props.label, (c) => c?.type?.Types);
     if (!tagComponent || !BUILT_IN_TAGS.includes(getBotLabel(tagComponent.props.type))) {
-        const guild = GuildStore.getGuild(guildId)
-        const tag = getTag(guild, undefined, user)
+        const guild = GuildStore.getGuild(guildId);
+        const tag = getTag(guild, undefined, user);
 
         if (tag) {
             if (tagComponent) {
                 tagComponent.props = {
                     type: 0,
                     ...tag
-                }
+                };
             } else {
-                const row = findInReactTree(ret.props.label, (c) => c.props?.lineClamp).props.children
-                row.props.children[1] = (<>
-                    {" "}
-                    <TagModule.default
-                        type={0}
-                        text={tag.text}
-                        textColor={tag.textColor}
-                        backgroundColor={tag.backgroundColor}
-                        verified={tag.verified}
-                    />
-                </>)
+                const row = findInReactTree(ret.props.label, (c) => c?.props?.lineClamp);
+                if (row?.props?.children?.props?.children) {
+                    row.props.children.props.children[1] = (<>
+                        {" "}
+                        <TagModule.default
+                            type={0}
+                            text={tag.text}
+                            textColor={tag.textColor}
+                            backgroundColor={tag.backgroundColor}
+                            verified={tag.verified}
+                        />
+                    </>);
+                }
             }
         }
     }
-}
+    
+    return ret;
+};
 
 export default () => {
-    const patches = []
+    const patches = [];
 
-    findByTypeNameAll("UserRow").forEach((UserRow) => patches.push(after("type", UserRow, rowPatch)))
+    findByTypeNameAll("UserRow").forEach((UserRow) => 
+        patches.push(after("type", UserRow, rowPatch))
+    );
 
-    return () => patches.forEach((unpatch) => unpatch())
-}
+    return () => patches.forEach((unpatch) => unpatch());
+};
