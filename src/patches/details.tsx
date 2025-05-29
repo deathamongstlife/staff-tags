@@ -1,62 +1,66 @@
-import { findByProps, findByStoreName, findByName } from "@vendetta/metro";
+import { findByTypeNameAll, findByStoreName } from "@vendetta/metro";
 import { after } from "@vendetta/patcher";
 import { findInReactTree } from "@vendetta/utils";
+import { General } from "@vendetta/ui/components";
 import getTag, { BUILT_IN_TAGS } from "../lib/getTag";
+import { findByProps } from "@vendetta/metro";
 
+const { View } = General;
 const TagModule = findByProps("getBotLabel");
 const getBotLabel = TagModule?.getBotLabel;
 const GuildStore = findByStoreName("GuildStore");
 
-// Try different possible profile components
-const UserProfileModal = findByName("UserProfileModal", false);
-const UserProfile = findByName("UserProfile", false);
-const ProfileModal = findByName("ProfileModal", false);
-
 export default () => {
     const patches = [];
 
-    const patchProfile = (Component, name) => {
-        if (!Component) return;
-        
-        patches.push(after("default", Component, ([props], ret) => {
-            try {
-                const { guildId, user } = props || {};
-                
-                if (!ret || !user) return ret;
-                
-                const guild = GuildStore?.getGuild?.(guildId);
-                const tag = getTag(guild, undefined, user);
-
-                if (tag && TagModule?.default) {
-                    // Try to find where to insert the tag in the profile
-                    const profileContent = findInReactTree(ret, (c) => 
-                        c?.props?.children && Array.isArray(c.props.children)
-                    );
-                    
-                    if (profileContent?.props?.children) {
-                        profileContent.props.children.push(
-                            React.createElement(TagModule.default, {
-                                type: 0,
-                                text: tag.text + `[${name}]`, // Debug marker
-                                textColor: tag.textColor,
-                                backgroundColor: tag.backgroundColor,
-                                verified: tag.verified
-                            })
-                        );
-                    }
-                }
-            } catch (error) {
-                // Silent
-            }
+    // Patch member list using the same approach as the platform indicators plugin
+    const rowPatch = ([{ user, guildId }], ret) => {
+        try {
+            if (!ret || !user || !guildId) return ret;
             
-            return ret;
-        }));
+            const guild = GuildStore?.getGuild?.(guildId);
+            const tag = getTag(guild, null, user);
+
+            if (tag && TagModule?.default) {
+                // Check if we already added a tag to avoid duplicates
+                const existingTag = findInReactTree(ret?.props?.label, (c) => c.key == "StaffTagsView");
+                if (!existingTag) {
+                    // Use the same pattern as the platform indicators plugin
+                    ret.props.label = (
+                        <View style={{
+                            justifyContent: "flex-start",
+                            flexDirection: "row", 
+                            alignItems: "center"
+                        }}
+                        key="StaffTagsView">
+                            {ret.props.label}
+                            <View key="StaffTagsMemberList" style={{
+                                flexDirection: 'row',
+                                marginLeft: 4
+                            }}>
+                                <TagModule.default
+                                    type={0}
+                                    text={tag.text}
+                                    textColor={tag.textColor}
+                                    backgroundColor={tag.backgroundColor}
+                                    verified={tag.verified}
+                                />
+                            </View>
+                        </View>
+                    );
+                }
+            }
+        } catch (error) {
+            // Silent
+        }
+        
+        return ret;
     };
 
-    // Try patching different profile components
-    patchProfile(UserProfileModal, "ProfileModal");
-    patchProfile(UserProfile, "UserProfile");
-    patchProfile(ProfileModal, "Modal");
+    // Patch all UserRow components (same as platform indicators plugin)
+    findByTypeNameAll("UserRow").forEach((UserRow) => 
+        patches.push(after("type", UserRow, rowPatch))
+    );
 
     return () => {
         patches.forEach(unpatch => {
