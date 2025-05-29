@@ -1,9 +1,11 @@
 import { findByTypeNameAll, findByStoreName } from "@vendetta/metro";
 import { after } from "@vendetta/patcher";
 import { findInReactTree } from "@vendetta/utils";
+import { General } from "@vendetta/ui/components";
 import getTag from "../lib/getTag";
 import { findByProps } from "@vendetta/metro";
 
+const { View } = General;
 const TagModule = findByProps("getBotLabel");
 const GuildStore = findByStoreName("GuildStore");
 
@@ -18,26 +20,33 @@ export default () => {
             const tag = getTag(guild, null, user);
 
             if (tag && TagModule?.default) {
-                // Try to find the actual row structure like your original code did
-                const row = findInReactTree(ret, (c) => c?.props?.style?.flexDirection === "row");
-                
-                if (row?.props?.children && Array.isArray(row.props.children)) {
-                    // Check if we already added the tag
-                    const existingTag = row.props.children.find(child => child?.key === "StaffTagsInsert");
-                    
-                    if (!existingTag) {
-                        // Insert at position 2 (after avatar and name, before status indicators)
-                        row.props.children.splice(2, 0,
-                            <TagModule.default
-                                key="StaffTagsInsert"
-                                type={0}
-                                text={tag.text}
-                                textColor={tag.textColor}
-                                backgroundColor={tag.backgroundColor}
-                                verified={tag.verified}
-                            />
-                        );
-                    }
+                const existingTag = findInReactTree(ret?.props?.label, (c) => c.key == "StaffTagsView");
+                if (!existingTag) {
+                    ret.props.label = (
+                        <View style={{
+                            flex: 1,
+                            flexDirection: "row", 
+                            alignItems: "center",
+                            justifyContent: "space-between" // This should separate content
+                        }}
+                        key="StaffTagsView">
+                            <View style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                flex: 0 // Don't take all space
+                            }}>
+                                {ret.props.label}
+                                <TagModule.default
+                                    type={0}
+                                    text={tag.text}
+                                    textColor={tag.textColor}
+                                    backgroundColor={tag.backgroundColor}
+                                    verified={tag.verified}
+                                    style={{ marginLeft: 4 }}
+                                />
+                            </View>
+                        </View>
+                    );
                 }
             }
         } catch (error) {
