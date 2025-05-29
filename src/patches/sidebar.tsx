@@ -1,69 +1,44 @@
-import { findByProps, findByStoreName } from "@vendetta/metro";
+import { findByProps, findByStoreName, findByName } from "@vendetta/metro";
 import { after } from "@vendetta/patcher";
 import { findInReactTree } from "@vendetta/utils";
-import { showToast } from "@vendetta/ui/toasts";
 import getTag, { BUILT_IN_TAGS } from "../lib/getTag";
 
-const Rows = findByProps("GuildMemberRow");
 const TagModule = findByProps("getBotLabel");
 const getBotLabel = TagModule?.getBotLabel;
 const GuildStore = findByStoreName("GuildStore");
 
-let debugCount = 0;
+// Try to find different member list components
+const GuildMemberRow = findByProps("GuildMemberRow")?.GuildMemberRow;
+const MemberListItem = findByName("MemberListItem", false);
+const VoiceUser = findByName("VoiceUser", false);
 
 export default () => {
-    // Check if components are found
-    if (!Rows?.GuildMemberRow) {
-        showToast("❌ GuildMemberRow not found", showToast.Kind.FAILURE);
-        return () => {};
-    }
-    
-    if (!TagModule?.default) {
-        showToast("❌ TagModule not found", showToast.Kind.FAILURE);
-        return () => {};
-    }
+    const patches = [];
 
-    showToast("✅ Sidebar patch loaded", showToast.Kind.SUCCESS);
-
-    return after("type", Rows.GuildMemberRow, ([{ guildId, channel, user }], ret) => {
+    // Helper function to add tag
+    const addTagToMember = ([props], ret) => {
         try {
-            debugCount++;
+            const { guildId, channel, user } = props || {};
             
-            // Only debug first few calls to avoid spam
-            if (debugCount <= 5) {
-                showToast(`🔍 Processing: ${user?.username || 'unknown'}`, showToast.Kind.INFO);
-            }
+            if (!ret || !getBotLabel || !user) return ret;
             
-            if (!ret || !getBotLabel || !user) {
-                if (debugCount <= 5) {
-                    showToast("⚠️ Missing data", showToast.Kind.FAILURE);
-                }
-                return ret;
-            }
-            
-            const guild = GuildStore?.getGuild?.(guildId);
-            const tag = getTag(guild, channel, user);
-            
-            if (tag) {
-                if (debugCount <= 5) {
-                    showToast(`🏷️ Tag found: ${tag.text}`, showToast.Kind.SUCCESS);
-                }
-                
-                const tagComponent = findInReactTree(ret, (c) => c?.type?.Types);
-                
-                if (!tagComponent || !BUILT_IN_TAGS.includes(getBotLabel(tagComponent.props?.type))) {
+            const tagComponent = findInReactTree(ret, (c) => c?.type?.Types);
+            if (!tagComponent || !BUILT_IN_TAGS.includes(getBotLabel(tagComponent.props?.type))) {
+                const guild = GuildStore?.getGuild?.(guildId);
+                const tag = getTag(guild, channel, user);
+
+                if (tag && TagModule?.default) {
                     if (tagComponent) {
                         tagComponent.props = {
                             type: 0,
                             ...tag
                         };
-                        if (debugCount <= 5) {
-                            showToast("✏️ Updated existing tag", showToast.Kind.INFO);
-                        }
                     } else {
-                        // Try to find insertion point
-                        const row = findInReactTree(ret, (c) => c?.props?.style?.flexDirection === "row");
+                        // Try multiple strategies to find insertion point
+                        let inserted = false;
                         
+                        // Strategy 1: flexDirection row
+                        const row = findInReactTree(ret, (c) => c?.props?.style?.flexDirection === "row");
                         if (row?.props?.children && Array.isArray(row.props.children)) {
                             row.props.children.push(
                                 React.createElement(TagModule.default, {
@@ -74,25 +49,56 @@ export default () => {
                                     verified: tag.verified
                                 })
                             );
-                            if (debugCount <= 5) {
-                                showToast("➕ Added tag to member", showToast.Kind.SUCCESS);
-                            }
-                        } else {
-                            if (debugCount <= 5) {
-                                showToast("❌ No insertion point found", showToast.Kind.FAILURE);
+                            inserted = true;
+                        }
+                        
+                        // Strategy 2: any children array
+                        if (!inserted) {
+                            const container = findInReactTree(ret, (c) => 
+                                Array.isArray(c?.props?.children) && c.props.children.length > 0
+                            );
+                            if (container?.props?.children) {
+                                container.props.children.push(
+                                    React.createElement(TagModule.default, {
+                                        type: 0,
+                                        text: tag.text,
+                                        textColor: tag.textColor,
+                                        backgroundColor: tag.backgroundColor,
+                                        verified: tag.verified
+                                    })
+                                );
                             }
                         }
                     }
                 }
-            } else {
-                if (debugCount <= 5) {
-                    showToast(`ℹ️ No tag for ${user.username}`, showToast.Kind.INFO);
-                }
             }
         } catch (error) {
-            showToast(`💥 Error: ${error.message}`, showToast.Kind.FAILURE);
+            // Silent error
         }
         
         return ret;
-    });
+    };
+
+    // Patch all possible components
+    if (GuildMemberRow) {
+        patches.push(after("type", GuildMemberRow, addTagToMember));
+    }
+    
+    if (MemberListItem) {
+        patches.push(after("default", MemberListItem, addTagToMember));
+    }
+    
+    if (VoiceUser) {
+        patches.push(after("default", VoiceUser, addTagToMember));
+    }
+
+    return () => {
+        patches.forEach(unpatch => {
+            try {
+                unpatch?.();
+            } catch (error) {
+                // Silent error
+            }
+        });
+    };
 };
