@@ -2,16 +2,18 @@ import { findByTypeNameAll, findByStoreName } from "@vendetta/metro";
 import { after } from "@vendetta/patcher";
 import { findInReactTree } from "@vendetta/utils";
 import { General } from "@vendetta/ui/components";
-import getTag from "../lib/getTag";
+import getTag, { BUILT_IN_TAGS } from "../lib/getTag";
 import { findByProps } from "@vendetta/metro";
 
 const { View } = General;
 const TagModule = findByProps("getBotLabel");
+const getBotLabel = TagModule?.getBotLabel;
 const GuildStore = findByStoreName("GuildStore");
 
 export default () => {
     const patches = [];
 
+    // Patch member list using the same approach as the platform indicators plugin
     const rowPatch = ([{ user, guildId }], ret) => {
         try {
             if (!ret || !user || !guildId) return ret;
@@ -20,31 +22,30 @@ export default () => {
             const tag = getTag(guild, null, user);
 
             if (tag && TagModule?.default) {
+                // Check if we already added a tag to avoid duplicates
                 const existingTag = findInReactTree(ret?.props?.label, (c) => c.key == "StaffTagsView");
                 if (!existingTag) {
+                    // Use flex-start to keep everything aligned left, but add the tag inline
                     ret.props.label = (
                         <View style={{
-                            flex: 1,
+                            justifyContent: "flex-start", // Keep left alignment
                             flexDirection: "row", 
                             alignItems: "center",
-                            justifyContent: "space-between" // This should separate content
+                            flexWrap: "wrap" // Allow wrapping if needed
                         }}
                         key="StaffTagsView">
-                            <View style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                flex: 0 // Don't take all space
-                            }}>
-                                {ret.props.label}
-                                <TagModule.default
-                                    type={0}
-                                    text={tag.text}
-                                    textColor={tag.textColor}
-                                    backgroundColor={tag.backgroundColor}
-                                    verified={tag.verified}
-                                    style={{ marginLeft: 4 }}
-                                />
-                            </View>
+                            {ret.props.label}
+                            <TagModule.default
+                                type={0}
+                                text={tag.text}
+                                textColor={tag.textColor}
+                                backgroundColor={tag.backgroundColor}
+                                verified={tag.verified}
+                                style={{ 
+                                    marginLeft: 6,
+                                    marginRight: 4
+                                }}
+                            />
                         </View>
                     );
                 }
@@ -56,6 +57,7 @@ export default () => {
         return ret;
     };
 
+    // Patch all UserRow components (same as platform indicators plugin)
     findByTypeNameAll("UserRow").forEach((UserRow) => 
         patches.push(after("type", UserRow, rowPatch))
     );
